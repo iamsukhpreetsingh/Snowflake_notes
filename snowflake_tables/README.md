@@ -175,7 +175,7 @@ FILE_FORMAT = (TYPE = CSV);
 
 ### Schema Override with Same Table Names
 Snowflake allows creating a **temporary or transient table** with the same name as a permanent table. However, during operations:
-- **Temporary tables take precedence** over permanent ones within the same session.
+- **Temporary tables take precedence** over permanent ones within the same session. For example, in the same session, if there are temporary and permanent table with same name, and if we try to drop that table the temporary table will be targeted and will get delete, rather than permanent one.
 - Dropping a table affects only the **session-specific version** unless the permanent one is explicitly targeted.
 
 ### Cloning Behavior
