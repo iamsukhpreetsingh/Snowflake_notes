@@ -35,8 +35,6 @@ Before setting up Snowpipe, ensure you have:
 - A **target table** already created in Snowflake.
 - **Storage integration** set up between Snowflake and your cloud provider (e.g., AWS S3).
 
-> 💡 *Note*: If you haven’t already configured external stages or storage integrations, refer to Part 14 of this series for detailed setup instructions.
-
 ---
 
 ## 🛠️ Step-by-Step Guide to Configuring Snowpipe with AWS S3
