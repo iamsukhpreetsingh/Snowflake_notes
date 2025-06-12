@@ -151,7 +151,8 @@ You’ll see output like:
 
 | EMP_ID | NAME       | DEPARTMENT     | SALARY | METADATA$ACTION | METADATA$ISUPDATE | METADATA$ROW_ID |
 |--------|------------|----------------|--------|------------------|--------------------|------------------|
-| 102    | Jane Smith | Engineering    | 85000  | UPDATE           | TRUE               | ...              |
+| 102    | Jane Smith | Engineering    | 85000  | INSERT           | TRUE               | ...              |
+| 102    | Jane Smith | Engineering    | 85000  | DELETE           | TRUE               | ...              |
 | 103    | Ani        | Marketing      | NULL   | DELETE           | FALSE              | ...              |
 
 This shows that two changes occurred: an update and a deletion.
