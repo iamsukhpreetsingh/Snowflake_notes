@@ -557,4 +557,3 @@ $$;
 - `SQLNOTFOUND` (cursor status)
 - `USER`, `CURRENT_ROLE()`
 
-This guide covers the essential components of Snowflake stored procedures. Each section provides practical examples that you can adapt for your specific use cases.
