@@ -298,11 +298,246 @@ Snowflake provides built-in governance dashboards:
 
 Snowflake’s **Dynamic Data Masking** gives you **granular, role-based control** over sensitive data—without duplicating tables or writing complex application logic.
 
-By implementing DDM:
-- **Compliance** becomes effortless.
-- **Data democratization** is safe.
-- **User experience** remains seamless.
 
-> 🔜 **Next Step**: Explore **Tag-Based Masking Policies** (automatically apply masking based on column tags like `PII`, `FINANCIAL`).
+## Snowflake Tag-Based Dynamic Data Masking: A Complete Guide
 
-With this guide, you’re ready to **secure your data like a pro**—whether you’re preparing for interviews or building production systems.
+Tag-based **Dynamic Data Masking (DDM)** in Snowflake allows you to **automatically apply masking policies** to columns based on **tags**—not just hardcoded column assignments. This is especially powerful in large environments where you want to **centrally manage PII/PHI/financial data protection** without manually applying policies to hundreds of columns.
+
+> 🔑 **Key Benefit**:  
+> Instead of running `ALTER TABLE ... MODIFY COLUMN ... SET MASKING POLICY` for every sensitive column, you **tag columns once**, and Snowflake **auto-applies the right masking policy**.
+
+---
+
+## 🧠 How Tag-Based Masking Works
+
+1. **Create a tag** (e.g., `PII_TYPE = 'CREDIT_CARD'`)
+2. **Assign the tag to columns** (e.g., `credit_card_number`)
+3. **Create a masking policy that references the tag**
+4. **Grant the masking policy to the tag**
+5. **Snowflake automatically enforces masking** on all tagged columns
+
+> ⚠️ **Requirement**:  
+> Tag-based masking requires **Snowflake Enterprise Edition or higher**.
+
+---
+
+## 🛠️ Step-by-Step Implementation
+
+### Step 1: Create Tags
+
+```sql
+-- Create a tag to classify PII types
+CREATE OR REPLACE TAG pii_type;
+
+-- Optional: Create a tag for sensitivity level
+CREATE OR REPLACE TAG sensitivity_level;
+```
+
+### Step 2: Apply Tags to Columns
+
+```sql
+-- Tag the credit_card column as 'CREDIT_CARD'
+ALTER TABLE credit_card_customer 
+MODIFY COLUMN credit_card 
+SET TAG pii_type = 'CREDIT_CARD';
+
+-- Tag pan_card as 'PAN'
+ALTER TABLE credit_card_customer 
+MODIFY COLUMN pan_card 
+SET TAG pii_type = 'PAN';
+
+-- Tag phone as 'PHONE'
+ALTER TABLE customer_contact 
+MODIFY COLUMN phone_number 
+SET TAG pii_type = 'PHONE';
+```
+
+> 💡 **Tip**: You can tag columns during table creation:
+> ```sql
+> CREATE TABLE users (
+>   id INT,
+>   email STRING,
+>   ssn STRING WITH TAG (pii_type = 'SSN')
+> );
+> ```
+
+---
+
+### Step 3: Create a Tag-Aware Masking Policy
+
+This policy uses `SYSTEM$GET_TAG_ON_CURRENT_COLUMN()` to **dynamically detect the tag value** of the column being queried.
+
+```sql
+CREATE OR REPLACE MASKING POLICY pii_masking_by_tag AS (val STRING)
+RETURNS STRING ->
+  CASE
+    -- Admins see everything
+    WHEN CURRENT_ROLE() IN ('ACCOUNTADMIN') THEN val
+    
+    -- Apply masking based on tag value
+    WHEN SYSTEM$GET_TAG_ON_CURRENT_COLUMN('pii_type') = 'CREDIT_CARD' THEN
+      RPAD('****', LENGTH(val) - 4, '*') || RIGHT(val, 4)
+      
+    WHEN SYSTEM$GET_TAG_ON_CURRENT_COLUMN('pii_type') = 'PAN' THEN
+      '****' || RIGHT(val, 4)
+      
+    WHEN SYSTEM$GET_TAG_ON_CURRENT_COLUMN('pii_type') = 'PHONE' THEN
+      'XXX-XXX-' || RIGHT(val, 4)
+      
+    WHEN SYSTEM$GET_TAG_ON_CURRENT_COLUMN('pii_type') = 'SSN' THEN
+      '***-**-' || RIGHT(val, 4)
+      
+    -- Default full mask
+    ELSE 'SENSITIVE DATA HIDDEN'
+  END;
+```
+
+> 🔍 **How it works**:  
+> When a user queries a column, Snowflake:
+> 1. Checks if the column has the `pii_type` tag
+> 2. Reads the tag’s value (e.g., `'CREDIT_CARD'`)
+> 3. Applies the corresponding masking rule
+
+---
+
+### Step 4: Grant the Masking Policy to the Tag
+
+```sql
+-- Link the masking policy to the tag
+ALTER TAG pii_type 
+SET MASKING POLICY pii_masking_by_tag;
+```
+
+> ✅ **That’s it!**  
+> All columns tagged with `pii_type` will **automatically use** this masking policy.
+
+---
+
+## 👥 Test with Different Roles
+
+### As `ACCOUNTADMIN` (Full Access)
+```sql
+SELECT credit_card, pan_card FROM credit_card_customer;
+```
+**Output**:
+```
+credit_card       | pan_card
+4532123456781234  | ABCDE1234F
+```
+
+### As `CCP` (Customer Care Role)
+```sql
+USE ROLE ccp;
+SELECT credit_card, pan_card FROM credit_card_customer;
+```
+**Output**:
+```
+credit_card       | pan_card
+************1234  | ****1234F
+```
+
+### As `ANALYST` (No Special Access)
+```sql
+USE ROLE analyst;
+SELECT credit_card, phone_number FROM customer_contact;
+```
+**Output**:
+```
+credit_card          | phone_number
+SENSITIVE DATA HIDDEN| XXX-XXX-5678
+```
+
+---
+
+## 🔁 Update or Remove Tag-Based Masking
+
+### To Change the Policy
+```sql
+-- Update the masking logic
+CREATE OR REPLACE MASKING POLICY pii_masking_by_tag AS (val STRING)
+RETURNS STRING ->
+  CASE
+    WHEN CURRENT_ROLE() = 'ACCOUNTADMIN' THEN val
+    WHEN SYSTEM$GET_TAG_ON_CURRENT_COLUMN('pii_type') = 'CREDIT_CARD' THEN
+      '####-####-####-' || RIGHT(val, 4)  -- New format
+    -- ... rest unchanged
+  END;
+
+-- Re-apply to tag (not always needed, but safe)
+ALTER TAG pii_type SET MASKING POLICY pii_masking_by_tag;
+```
+
+### To Remove Masking
+```sql
+-- Unset the policy from the tag
+ALTER TAG pii_type UNSET MASKING POLICY;
+
+-- Optionally drop the policy
+DROP MASKING POLICY pii_masking_by_tag;
+```
+
+---
+
+## 📊 Governance & Discovery
+
+### Find All Tagged Columns
+```sql
+-- List columns with pii_type tag
+SELECT 
+  TABLE_SCHEMA,
+  TABLE_NAME,
+  COLUMN_NAME,
+  TAG_NAME,
+  TAG_VALUE
+FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES
+WHERE TAG_NAME = 'PII_TYPE';
+```
+
+### View Masking Policy Usage
+Go to **Snowflake UI → Governance → Data Policies** to see:
+- **Most used masking policies**
+- **Columns with tag-based masking**
+- **Policy-to-tag mappings**
+
+---
+
+## 🎯 Best Practices
+
+1. **Use Consistent Tag Values**  
+   Standardize values like `'CREDIT_CARD'`, `'SSN'`, `'EMAIL'` across your organization.
+
+2. **Combine with Row Access Policies**  
+   For **row + column-level security** (e.g., HR sees only their region’s SSNs).
+
+3. **Automate Tagging with CI/CD**  
+   Use **dbt + Snowflake tags** to auto-tag columns during deployment:
+   ```yaml
+   # dbt model config
+   +meta:
+     pii_type: 'CREDIT_CARD'
+   ```
+
+4. **Audit Regularly**  
+   Run the `TAG_REFERENCES` query weekly to ensure all PII is tagged.
+
+5. **Avoid Over-Tagging**  
+   Only tag columns that truly contain sensitive data to reduce overhead.
+
+---
+
+## ❓ Common Interview Question
+
+> **Q**: *What’s the difference between column-level and tag-based masking?*  
+> **A**:  
+> - **Column-level**: Manually apply policy to each column (`ALTER TABLE ... SET MASKING POLICY`).  
+> - **Tag-based**: Apply policy once to a tag; all tagged columns inherit it automatically—**scalable and maintainable**.
+
+---
+
+## ✅ Conclusion
+
+Tag-based Dynamic Data Masking is a **game-changer for enterprise data security**. By decoupling **policy logic** from **column assignments**, you get:
+- **Centralized control** over PII masking
+- **Automatic enforcement** across thousands of columns
+- **Simplified compliance** (GDPR, HIPAA, PCI-DSS)
+
